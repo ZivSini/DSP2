@@ -27,8 +27,47 @@ public class Main {
                 .withRegion("us-east-1")
                 .build();
 
-        double minPmi = Double.parseDouble(args[0]);
-        double relMinPmi = Double.parseDouble(args[1]);
+
+        HadoopJarStepConfig hadoopJarStep = new HadoopJarStepConfig()
+                .withJar(stepsRunnerJarPath)
+                .withArgs("s3://datasets.elasticmapreduce/ngrams/books/20090715/heb-all/2gram/data", output_path);
+        StepConfig onlyStep = new StepConfig()
+                .withName("all_steps")
+                .withHadoopJarStep(hadoopJarStep)
+                .withActionOnFailure("TERMINATE_JOB_FLOW");
+
+
+		/*
+        Set instances
+		 */
+
+        JobFlowInstancesConfig instances = new JobFlowInstancesConfig()
+                .withInstanceCount(5)
+                .withMasterInstanceType(InstanceType.M4Large.toString())
+                .withSlaveInstanceType(InstanceType.M4Large.toString())
+                .withHadoopVersion("2.6.0")
+                .withEc2KeyName(key)
+                .withPlacement(new PlacementType("us-east-1a"))
+                .withKeepJobFlowAliveWhenNoSteps(false);
+
+		/*
+        Run all jobs
+		 */
+        RunJobFlowRequest request = new RunJobFlowRequest()
+                .withName(key)
+                .withInstances(instances)
+                .withSteps(onlyStep)
+                .withLogUri(log_path)
+                .withServiceRole("EMR_DefaultRole")
+                .withJobFlowRole("EMR_EC2_DefaultRole")
+                .withReleaseLabel("emr-5.11.0");
+        RunJobFlowResult result = emr.runJobFlow(request);
+        String id = result.getJobFlowId();
+        System.out.println("Id: " + id);
+
+
+
+
 
 
     }

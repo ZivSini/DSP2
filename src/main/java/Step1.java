@@ -1,5 +1,6 @@
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.elasticmapreduce.model.*;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -43,7 +44,7 @@ public class Step1 {
 
             // Emit c(w1)
             Text c1Key = new Text("C1 " +decade +" " +word1);
-            Text c1Value = new Text(occ);
+            Text c1Value = new Text(occ + " " + word2);
             context.write(c1Key, c1Value);
 
             // Emit c(w2)
@@ -58,12 +59,68 @@ public class Step1 {
         @Override
         protected void reduce(Text key, Iterable<Text> values, Reducer<Text,Text,Text,Text>.Context context) throws IOException, InterruptedException {
             long totalOcc = 0;
-
             for(Text val : values){
-                totalOcc += Long.parseLong(val.toString());
+                String[] valueAsArray = val.toString().split("\\s+");
+                long occ = Long.parseLong(valueAsArray[0]);
+                totalOcc += occ;
             }
+            String[] keyAsArray = key.toString().split("\\s+");
+            String type = keyAsArray[0];
+            String decade = keyAsArray[1];
 
-            context.write(key, new Text(String.valueOf(totalOcc)));
+
+            switch (type) {
+                case "N":
+                    Configuration configuration = context.getConfiguration();
+                    configuration.set("N " +decade, String.valueOf(totalOcc));
+                    break;
+
+                case "C": {
+                    String word1 = keyAsArray[2];
+                    String word2 = keyAsArray[3];
+
+                    Text newKey = new Text(word1 + " " + decade);
+                    Text newValue = new Text(word2 + " " + type + " " + totalOcc);
+
+                    context.write(newKey, newValue);
+                    break;
+                }
+
+                case "C1": {
+                    String word1 = keyAsArray[2];
+                    String word2;
+
+                    for (Text value : values) {
+                        String[] valueAsArray = value.toString().split("\\s+");
+                        word2 = valueAsArray[1];
+
+                        Text newKey = new Text(word1 + " " + decade);
+                        Text newValue = new Text(word2 + " " + type + " " + totalOcc);
+
+                        context.write(newKey, newValue);
+                    }
+                    break;
+                }
+
+                case "C2": {
+                    String word1;
+                    String word2 = keyAsArray[2];
+
+                    for (Text value : values) {
+                        String[] valueAsArray = value.toString().split("\\s+");
+                        word1 = valueAsArray[1];
+
+                        Text newKey = new Text(word1 + " " + decade);
+                        Text newValue = new Text(word2 + " " + type + " " + totalOcc);
+
+                        context.write(newKey, newValue);
+                    }
+                    break;
+                }
+
+                default:
+                    throw new IOException("Invalid type in step1: " +type);
+            }
         }
     }
 }
