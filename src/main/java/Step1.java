@@ -72,6 +72,16 @@ public class Step1 {
             switch (type) {
                 case "N":
                     Configuration configuration = context.getConfiguration();
+                    int minDecade = Integer.parseInt(configuration.get("N min"));
+                    int maxDecade = Integer.parseInt(configuration.get("N max"));
+                    if (totalOcc > maxDecade)
+                    {
+                        configuration.set("N Max", decade);
+                    }
+                    if (totalOcc < minDecade)
+                    {
+                        configuration.set("N min", decade);
+                    }
                     configuration.set("N " +decade, String.valueOf(totalOcc));
                     break;
 

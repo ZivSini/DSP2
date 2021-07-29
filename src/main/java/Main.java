@@ -13,6 +13,13 @@ public class Main {
     public static AWSCredentialsProvider credentialsProvider = new AWSStaticCredentialsProvider(new ProfileCredentialsProvider().getCredentials());
     public static AmazonElasticMapReduce emr;
 
+    // set the correct paths before running
+    public static String stepsRunnerJarPath = "";
+    public static String outputPath = "";
+    public static String key = "";
+    public static String logPath = "";
+
+
     public static void main(String[] args) {
 
         if(args.length < 2){
@@ -30,9 +37,9 @@ public class Main {
 
         HadoopJarStepConfig hadoopJarStep = new HadoopJarStepConfig()
                 .withJar(stepsRunnerJarPath)
-                .withArgs("s3://datasets.elasticmapreduce/ngrams/books/20090715/heb-all/2gram/data", output_path);
-        StepConfig onlyStep = new StepConfig()
-                .withName("all_steps")
+                .withArgs(outputPath, minNPMI, relMinNPMI);
+        StepConfig stepsRunnerConfig = new StepConfig()
+                .withName("StepsManager")
                 .withHadoopJarStep(hadoopJarStep)
                 .withActionOnFailure("TERMINATE_JOB_FLOW");
 
@@ -64,11 +71,6 @@ public class Main {
         RunJobFlowResult result = emr.runJobFlow(request);
         String id = result.getJobFlowId();
         System.out.println("Id: " + id);
-
-
-
-
-
 
     }
 }

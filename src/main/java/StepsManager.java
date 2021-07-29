@@ -12,68 +12,76 @@ import java.io.IOException;
 
 public class StepsManager {
 
-    private static String bucketOutputPath;
+    private static String outputPath;
+    private static String google2GramPath = "s3://datasets.elasticmapreduce/ngrams/books/20090715/heb-all/2gram/data";
+    private static double minNPMI;
+    private static double relMinNPMI;
+    private static String s3BucketPath = "https://2gram-bucket.s3.amazonaws.com/";
 
-    private static String setPaths (Job job, String inputPath) throws  IOException {
-        FileInputFormat.addInputPath(job, new Path(inputPath));
-        String path = bucketOutputPath + job.getJobName();
-        FileOutputFormat.setOutputPath(job, new Path (path));
-        return path;
-    }
-
-    private static String step1 (Job job, String filePath,boolean use_combiner_or_not) throws IOException {
-
-        job.setJarByClass(step1_count_N_and_split_corpus.class);
-        job.setMapperClass(step1_count_N_and_split_corpus.MapperClass.class);
-        job.setReducerClass(step1_count_N_and_split_corpus.ReducerClass.class);
+    private static String runStep1 (Job job) throws IOException, ClassNotFoundException, InterruptedException {
+        job.setJarByClass(Step1.class);
+        job.setMapperClass(Step1.Step1Mapper.class);
+        job.setReducerClass(Step1.Step1Reducer.class);
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(Text.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
         job.setInputFormatClass(SequenceFileInputFormat.class);
         job.setOutputFormatClass(TextOutputFormat.class);
-        if(use_combiner_or_not){
-            job.setCombinerClass(step1_count_N_and_split_corpus.CombinerClass.class);
+
+        FileInputFormat.addInputPath(job, new Path(google2GramPath));
+        String stepOutputPath = s3BucketPath + job.getJobName();
+        FileOutputFormat.setOutputPath(job, new Path (stepOutputPath));
+
+        if(!job.waitForCompletion(true)){
+            System.out.println("Job 1 failed");
+            System.exit(1);
         }
-        return setPaths(job, filePath);
+
+        return stepOutputPath;
     }
-    private static String step2 (Job job, String filePath) throws IOException {
-        job.setJarByClass(step2_map_calc_nr_tr_reduce_name_with_corpus_val_nr_tr.class);
-        job.setMapperClass(step2_map_calc_nr_tr_reduce_name_with_corpus_val_nr_tr.Mapper_Nr_Tr.class);
-        job.setReducerClass(step2_map_calc_nr_tr_reduce_name_with_corpus_val_nr_tr.ReducerClass.class);
-        job.setPartitionerClass(step2_map_calc_nr_tr_reduce_name_with_corpus_val_nr_tr.PartitionerClass.class);
+    private static String runStep2 (Job job, String inputPath) throws IOException, ClassNotFoundException, InterruptedException {
+        job.setJarByClass(Step2.class);
+        job.setMapperClass(Step2.Step2Mapper.class);
+        job.setReducerClass(Step2.Step2Reducer.class);
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(Text.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
         job.setInputFormatClass(TextInputFormat.class);
         job.setOutputFormatClass(TextOutputFormat.class);
-        return setPaths(job, filePath);
+
+        FileInputFormat.addInputPath(job, new Path(inputPath));
+        String stepOutputPath = s3BucketPath + job.getJobName();
+        FileOutputFormat.setOutputPath(job, new Path (stepOutputPath));
+
+        if(!job.waitForCompletion(true)){
+            System.out.println("Job 2 failed");
+            System.exit(1);
+        }
+
+        return stepOutputPath;
     }
-    private static String step3 (Job job, String filePath) throws IOException {
-        job.setJarByClass(step3_calculate_probability.class);
-        job.setMapperClass(step3_calculate_probability.Mapper_pass_to_reducer.class);
-        job.setReducerClass(step3_calculate_probability.ReducerClass.class);
+    private static String runStep3 (Job job, String inputPath) throws IOException, ClassNotFoundException, InterruptedException {
+        job.setJarByClass(Step3.class);
+        job.setMapperClass(Step3.Step3Mapper.class);
+        job.setReducerClass(Step3.Step3Reducer.class);
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(Text.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
         job.setInputFormatClass(TextInputFormat.class);
         job.setOutputFormatClass(TextOutputFormat.class);
-        return setPaths(job, filePath);
-    }
-    private static String step4 (Job job, String filePath) throws IOException {
-        job.setJarByClass(step4_sort.class);
-        job.setMapperClass(step4_sort.Mapper_pass_to_reducer.class);
-        job.setReducerClass(step4_sort.ReducerClass.class);
-        job.setNumReduceTasks(1);
-        job.setMapOutputKeyClass(Text.class);
-        job.setMapOutputValueClass(Text.class);
-        job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(Text.class);
-        job.setInputFormatClass(TextInputFormat.class);
-        job.setOutputFormatClass(TextOutputFormat.class);
-        return setPaths(job, filePath);
+
+        FileInputFormat.addInputPath(job, new Path(inputPath));
+        FileOutputFormat.setOutputPath(job, new Path (outputPath));
+
+        if(!job.waitForCompletion(true)){
+            System.out.println("Job 3 failed");
+            System.exit(1);
+        }
+
+        return outputPath;
     }
 
 
@@ -85,53 +93,36 @@ public class StepsManager {
             System.exit(1);
         }
 
-        String input = args[0];
-        bucketOutputPath = args[1];
-        boolean combiner_or_not = args.length > 2 && args[2].equals("yes");
+        outputPath = args[0];
+        minNPMI = Double.parseDouble(args[1]);
+        relMinNPMI = Double.parseDouble(args[2]);
 
+//      Step 1
         Configuration job1conf = new Configuration();
-        final Job job1 = Job.getInstance(job1conf, "step1");
-        String step1Path = step1(job1, input, combiner_or_not);
-        if (job1.waitForCompletion(true)){
-            System.out.println("Job 1 Completed");
-        }
-        else{
-            System.out.println("Job 1 Failed");
-            System.exit(1);
-        }
-        Counters counters = job1.getCounters();
-        Counter counter = counters.findCounter(NCounter.N_COUNTER);
-        long N = counter.getValue();
-        job1conf.setLong("counter", N);
+        final Job job1 = Job.getInstance(job1conf, "Step1");
+        String step1output = runStep1(job1);
+
+        System.out.println("Step 1 completed successfully");
 
 
         Configuration job2conf = new Configuration();
-        job2conf.setLong("counter", N);
+        for (int i = minDecade; i < maxDecade; i+=10) {
+            String decade = job1conf.get("N " + i);
+            if(decade != null) job2conf.set("N " + i, decade);
+        }
         final Job job2 = Job.getInstance(job2conf, "step2");
-        String job2Path = step2(job2, step1Path);
+        String step2output = runStep2(job2, step1output);
 
-        if (job2.waitForCompletion(true)){
-            System.out.println("Job 2 Completed");
-            System.out.println("Counter: " + N);
+        System.out.println("Step 2 completed successfully ");
 
-        }
-        else{
-            System.out.println("Job 2 Failed");
-            System.exit(1);
-        }
-
+//      Step 3
         Configuration job3conf = new Configuration();
-        job3conf.setLong("counter", N);
+        job3conf.set("minNPMI", String.valueOf(minNPMI));
+        job3conf.set("relMinNPMI", String.valueOf(relMinNPMI));
         final Job job3 = Job.getInstance(job3conf, "step3");
-        String job3Path = step3(job3, job2Path);
+        String step3output = runStep2(job3, step2output);
 
-        if (job3.waitForCompletion(true)){
-            System.out.println("Job 3 Completed");
-        }
-        else{
-            System.out.println("Job 3 Failed");
-            System.exit(1);
-        }
+        System.out.println("Step 3 completed successfully ");
 
 
         Configuration job4conf = new Configuration();
